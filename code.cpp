@@ -29,19 +29,25 @@ enum Ordertype{
     SB,SH,SW,  //S类型 访存Store操作指令 27~29
     JAL,  //J类型 用于无条件跳转的指令 30
     BEQ,BNE,BLT,BGE,BLTU,BGEU,  //B类型 用于有条件跳转的指令 31~36
-	ERROR,END
+	END
 };
+string GGG[]={"LUI","AUIPC",
+	"ADD","SUB","SLL","SLT","SLTU","XOR","SRL","SRA","OR","AND",
+    "JALR","LB","LH","LW","LBU","LHU","ADDI","SLTI","SLTIU","XORI","ORI","ANDI","SLLI","SRLI","SRAI",
+    "SB","SH","SW",
+    "JAL",
+    "BEQ","BNE","BLT","BGE","BLTU","BGEU",
+	"END"};
 class Order{
 public:
 	Ordertype type;
 	unsigned int rd,rs1,rs2,imm;
-	Order():type(ERROR){}
+	Order(){}
 	Order(Ordertype _type,unsigned int _rd,unsigned int _rs1,unsigned int _rs2, unsigned int _imm):type(_type),rd(_rd),rs1(_rs1),rs2(_rs2),imm(_imm){}
 };
 Order AnalysisOrder(int pos){
 	unsigned int s=(unsigned int)mem[pos]+((unsigned int)mem[pos+1]<<8)+((unsigned int)mem[pos+2]<<16)+((unsigned int)mem[pos+3]<<24);
 	Order order;
-	// printf("%x\n",s);
 	if(s==(int)0x0ff00513){
 		order.type=END;
 		return order;
@@ -74,8 +80,8 @@ Order AnalysisOrder(int pos){
 		if(type2==0x6)order.type=OR;
 		if(type2==0x7)order.type=AND;
 	}
-	if(type1==0x6f||type1==0x03||type1==0x13){//I类型
-		if(type1==0x6f)order.type=JALR;
+	if(type1==0x67||type1==0x03||type1==0x13){//I类型
+		if(type1==0x67)order.type=JALR;
 		if(type1==0x03){
 			if(type2==0x0)order.type=LB;
 			if(type2==0x1)order.type=LH;
@@ -117,7 +123,10 @@ Order AnalysisOrder(int pos){
 		if(type2==0x7)order.type=BGEU;
 		order.imm=(((s>>7)&0x1)<<11) | (((s>>8)&0xf)<<1) | (((s>>25)&0x3f)<<5)  | (((s>>31)&1)<<12);
 	}
-	// printf("%u %x %x %x %u\n",order.type,order.rd,order.rs1,order.rs2,order.imm);
+	// printf("%x %u\n",s,reg[10]&255u);
+	// printf("%d %x\n",pc,s);
+	// cout<<GGG[order.type]<<endl;
+	
 	return order;
 }
 void work(Order order){
@@ -136,7 +145,14 @@ void work(Order order){
 	if(order.type==OR)reg[order.rd]=reg[order.rs1]|reg[order.rs2],pc+=4;
 	if(order.type==AND)reg[order.rd]=reg[order.rs1]&reg[order.rs2],pc+=4;
 
-	if(order.type==JALR)reg[order.rd]=pc+4,pc=(reg[order.rs1]+order.imm)&(~1);
+	if(order.type==JALR||order.type==LB||order.type==LH||order.type==LW||order.type==LBU||order.type==LHU){
+		if(order.imm>>11)order.imm|=0xfffff000;
+	}
+	if(order.type==JALR){
+		unsigned int t=pc+4;
+		pc=(reg[order.rs1]+order.imm)&(~1);
+		reg[order.rd]=t;
+	}
 	if(order.type==LB){
 		int pos=reg[order.rs1]+order.imm;
 		reg[order.rd]=(char)mem[pos];
@@ -162,6 +178,10 @@ void work(Order order){
 		reg[order.rd]=(unsigned short)mem[pos]+((unsigned short)mem[pos+1]<<8);
 		pc+=4;
 	}
+
+	if(order.type==ADDI||order.type==SLTI||order.type==SLTIU||order.type==XORI||order.type==ORI||order.type==ANDI){
+		if(order.imm>>11)order.imm|=0xfffff000;
+	}
 	if(order.type==ADDI)reg[order.rd]=reg[order.rs1]+order.imm,pc+=4;
 	if(order.type==SLTI)reg[order.rd]=((int)reg[order.rs1]<(int)order.imm)?1:0,pc+=4;
 	if(order.type==SLTIU)reg[order.rd]=(reg[order.rs1]<order.imm)?1:0,pc+=4;
@@ -171,6 +191,10 @@ void work(Order order){
 	if(order.type==SLLI)reg[order.rd]=reg[order.rs1]<<order.imm,pc+=4;
 	if(order.type==SRLI)reg[order.rd]=reg[order.rs1]>>order.imm,pc+=4;
 	if(order.type==SRAI)reg[order.rd]=(int)reg[order.rs1]>>order.imm,pc+=4;
+	
+	if(order.type==SB||order.type==SH||order.type==SW){
+		if(order.imm>>11)order.imm|=0xfffff000;
+	}
 
 	if(order.type==SB){
 		int pos=reg[order.rs1]+order.imm;
@@ -190,8 +214,15 @@ void work(Order order){
 
 	if(order.type==JAL){
 		if(order.imm>>20)order.imm|=0xfff00000;
+	}
+
+	if(order.type==JAL){
 		// printf("imm=%x\n",order.imm);
-		reg[order.rd]=pc+4,pc+=(int)order.imm;
+		reg[order.rd]=pc+4,pc+=order.imm;
+	}
+
+	if(order.type==BEQ||order.type==BNE||order.type==BLT||order.type==BGE||order.type==BLTU||order.type==BGEU){
+		if(order.imm>>12)order.imm|=0xffffe000;
 	}
 
 	if(order.type==BEQ){
@@ -218,6 +249,10 @@ void work(Order order){
 		if(reg[order.rs1]>=reg[order.rs2])pc+=order.imm;
 		else pc+=4;
 	}
+	reg[0]=0;
+	// printf("%d %d %d %d !!! ",order.rd,order.rs1,order.rs2,order.imm);
+	// for(int i=0;i<=20;i++)cout<<reg[i]<<" ";
+	// cout<<endl;
 }
 
 int main(){
@@ -227,9 +262,9 @@ int main(){
 	while(1){
 		Order order=AnalysisOrder(pc);
 		if(order.type==END)break;
-		if(order.type==ERROR)break;
 		work(order);
+		// if(++cnt==500)exit(0);
 	}
-	printf("%d\n",((unsigned int)reg[10])&255u);
+	printf("%u\n",reg[10]&255u);
 	return 0;
 }

@@ -31,11 +31,24 @@ enum instruction{
     LUI,AUIPC, //U
     JAL //J
 };
+string GGG[]={"ERROR",
+    "ADD","SUB","SLL","SLT","SLTU","XOR","SRL","SRA","OR","AND",
+    "JALR","LB","LH","LW","LBU","LHU","ADDI","SLTI","SLTIU","XORI","ORI","ANDI","SLLI","SRLI","SRAI",
+    "SB","SH","SW",
+    "BEQ","BNE","BLT","BGE","BLTU","BGEU",
+    "LUI","AUIPC",
+    "JAL"
+};
 struct ins{
     enum instruction ins;
     unsigned int rd,rs1,rs2,imm;
 };
+int cnt=0;
 ins get_ins(unsigned int t){
+    // printf("%x %u\n",t,reg[10]&255u);
+    // printf("%x\n",t);
+    
+    // if(++cnt==50)exit(0);
     switch (t&0x7F){
         case 0x33:{
             // R
@@ -156,7 +169,6 @@ ins get_ins(unsigned int t){
             unsigned int rd=(t>>7)&0x1F,imm=0u;
             imm=((t>>12)&0xFFFFF)<<12;
             enum instruction inss=LUI;
-			// std::cout<<"!!!!"<<inss<<" "<<rd<<" "<<imm<<std::endl;
             return (ins){inss,rd,0u,0u,imm};
             break;
         }
@@ -173,7 +185,6 @@ ins get_ins(unsigned int t){
             unsigned int rd=(t>>7)&0x1F,rs1=(t>>15)&0x1F,imm=0u;
             imm=((t>>21)&0x3FF)<<1;imm|=((t>>20)&0x1)<<11;imm|=((t>>12)&0xFF)<<12;if (t>>31) imm|=0xFFF00000;
             enum instruction inss=JAL;
-			// cout<<"!!"<<"JAL"<<" "<<imm<<endl;
             return (ins){inss,rd,rs1,0u,imm};
             break;
         }
@@ -203,8 +214,14 @@ void IF(){
 }
 void ID(){
     if (EX_busy || !ID_busy) return;
-    if (IF_data.origin_ins==0xFF00513) return;
+    if (IF_data.origin_ins==0xFF00513) {
+        return;
+    }
     ins ins=get_ins(IF_data.origin_ins);
+    // cout<<IF_data.pc<<" ";
+    // cout<<GGG[ins.ins]<<endl;
+    // for(int i=0;i<=20;i++)cout<<reg[i]<<" ";
+    // cout<<endl;
     ID_data=IF_data;
     if (ins.rs1 && reg_busy[ins.rs1]) {
         if (EX_data.rd==ins.rs1 && EX_data.rd_done) ID_data.rs1_value=EX_data.rd_value;
@@ -233,6 +250,7 @@ void ID(){
             break;
         default:break;
     }
+    // cout<<ID_data.rd_value<<" "<<ID_data.rs1_value<<" "<<ID_data.rs2_value<<" "<<ID_data.imm<<endl;
 }
 void EX(){
     if (MEM_busy || !EX_busy) return;
@@ -241,7 +259,10 @@ void EX(){
         case LUI:EX_data.rd_value=ID_data.imm;EX_data.rd_done=true;break;
         case AUIPC:EX_data.rd_value=ID_data.pc+ID_data.imm;EX_data.rd_done=true;break;
         case JAL:EX_data.rd_value=ID_data.pc+4;EX_data.rd_done=true;/*pc=ID_data.pc+ID_data.imm;ID_busy=false;*/break;
-        case JALR:EX_data.rd_value=ID_data.pc+4;EX_data.rd_done=true;/*pc=(ID_data.rs1_value+ID_data.imm)&(~1);ID_busy=false;*/break;
+        case JALR:
+            EX_data.rd_value=ID_data.pc+4;EX_data.rd_done=true;/*pc=(ID_data.rs1_value+ID_data.imm)&(~1);ID_busy=false;*/
+            // printf("!!!!%u %u!!!!!\n",EX_data.rd_value,EX_data.rd);
+            break;
         case BEQ:
             //if (ID_data.rs1_value==ID_data.rs2_value) pc=ID_data.pc+ID_data.imm;else pc=ID_data.pc+4;ID_busy=false;
             if (ID_data.rs1_value==ID_data.rs2_value){
@@ -373,6 +394,7 @@ void WB(){
         default:
             if (MEM_data.rd){
                 reg[MEM_data.rd]=MEM_data.rd_value;
+                // cout<<"@@"<<MEM_data.rd<<" "<<MEM_data.rd_value<<"@@";
                 reg_busy[MEM_data.rd]--;
             }
             break;
