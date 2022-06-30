@@ -54,6 +54,7 @@ public:
 
 int Clock=0;
 int OKnum=0;
+int predictTot=0,predictSuccess=0;
 unsigned int pc_new;
 unsigned int pc_las;
 class Register{
@@ -64,6 +65,7 @@ public:
 class Ins_node{
 public:
 	unsigned int inst,pc,jumppc;
+	bool isjump;
 	Ordertype ordertype;
 };
 class Insturction_Queue{
@@ -98,6 +100,7 @@ class ROB_node{
 public:
 	Ordertype ordertype;
 	unsigned int inst,pc,jumppc,dest,value;
+	bool isjump;
 	bool ready;
 };
 class ReorderBuffer{
@@ -105,6 +108,12 @@ public:
 	ROB_node s[MaxROB];
 	int L=1,R=0,size=0;
 }ROB_las,ROB_new;
+
+class Branch_History_Table{
+public:
+	bool s[2];// 00 强不跳； 01 弱不跳； 10 弱跳； 11 弱不跳；
+}BHT_las[1<<12],BHT_new[1<<12];
+int update_BHT_id;
 
 Order Decode(unsigned int s,bool IsOutput=0){
 	// cout<<"@@"<<s<<endl;
@@ -225,6 +234,10 @@ bool isStore(Ordertype type){
 }
 
 bool flag_END_las,flag_END_new;
+bool BranchJudge(int x){
+	if(BHT_las[x].s[0]==0)return 0;
+	return 1;
+}
 void Get_ins_to_queue(){
 	if(Ins_queue_las.size==MaxIns)return;
 	// cout<<"!!!"<<pc_las<<endl;
@@ -237,13 +250,14 @@ void Get_ins_to_queue(){
 	if(isBranch(order.type)){
 		//JAL 直接跳转
 		//目前强制pc不跳转；JALR默认不跳转，让它必定预测失败
-		if(order.type!=JALR)tmp.jumppc=pc_las+order.imm;
-		if(order.type==JAL){
-			pc_new=pc_las+order.imm;
-		}
+		if(order.type==JAL)pc_new=pc_las+order.imm;
 		else {
 			if(order.type==JALR)pc_new=pc_las+4;
-			else pc_new=pc_las+4;
+			else {
+				tmp.jumppc=pc_las+order.imm;
+				if(BranchJudge(tmp.inst&0xfff))pc_new=pc_las+order.imm,tmp.isjump=1;
+				else pc_new=pc_las+4,tmp.isjump=0;
+			}
 		}
 	}
 	else pc_new=pc_las+4;
@@ -277,8 +291,8 @@ void do_ins_queue(){
 		
 		//修改ROB
 		
-		ROB_new.s[b].inst=tmp.inst, ROB_new.s[b].ordertype=tmp.ordertype;
 		ROB_new.s[b].pc=tmp.pc;
+		ROB_new.s[b].inst=tmp.inst, ROB_new.s[b].ordertype=tmp.ordertype;
 		ROB_new.s[b].dest=order.rd , ROB_new.s[b].ready=0;
 		
 		//修改LB
@@ -334,7 +348,7 @@ void do_ins_queue(){
 		//修改ROB
 		
 		ROB_new.s[b].inst=tmp.inst, ROB_new.s[b].ordertype=tmp.ordertype;
-		ROB_new.s[b].pc=tmp.pc, ROB_new.s[b].jumppc=tmp.jumppc;
+		ROB_new.s[b].pc=tmp.pc, ROB_new.s[b].jumppc=tmp.jumppc , ROB_new.s[b].isjump=tmp.isjump;
 		ROB_new.s[b].dest=order.rd , ROB_new.s[b].ready=0;
 
 		//修改RS
@@ -595,7 +609,7 @@ void do_ROB(){
 		ROB_new.size--,ROB_new.L=(ROB_las.L+1)%MaxROB;
 
 		//JAL必定预测成功
-		//目前强制预测不跳转，让JALR必定预测失败
+		//让JALR必定预测失败
 		if(ROB_las.s[b].ordertype==JAL){
 
 			// update register
@@ -615,32 +629,56 @@ void do_ROB(){
 				if(SLB_las.s[j].qk==b)SLB_new.s[j].qk=-1,SLB_new.s[j].vk=ROB_las.s[b].value;
 			}
 		}
-		else if(ROB_las.s[b].value==1||ROB_las.s[b].ordertype==JALR){//预测失败
-			pc_new=ROB_las.s[b].jumppc;
-			Clear_flag=1;
-			if(ROB_las.s[b].ordertype==JALR){
-				
-				// update register
-				int rd=ROB_las.s[b].dest;
-				reg_new[rd].reg=ROB_las.s[b].value;
-				if(reg_las[rd].busy&&reg_las[rd].reorder==b)reg_new[rd].busy=0;
+		else {
+			predictTot++;
 
-				// 更改 RS
-				for(int j=0;j<MaxRS;j++){
-					if(RS_las.s[j].busy){
-						if(RS_las.s[j].qj==b)RS_new.s[j].qj=-1,RS_new.s[j].vj=ROB_las.s[b].value;
-						if(RS_las.s[j].qk==b)RS_new.s[j].qk=-1,RS_new.s[j].vk=ROB_las.s[b].value;
+			if( (ROB_las.s[b].value^ROB_las.s[b].isjump)==1 || ROB_las.s[b].ordertype==JALR){//预测失败
+
+				// update BHT
+				int x=ROB_las.s[b].inst&0xfff;
+				if(BHT_las[x].s[0]==0&&BHT_las[x].s[1]==0)BHT_new[x].s[0]=0,BHT_new[x].s[1]=1;
+				if(BHT_las[x].s[0]==0&&BHT_las[x].s[1]==1)BHT_new[x].s[0]=1,BHT_new[x].s[1]=0;
+				if(BHT_las[x].s[0]==1&&BHT_las[x].s[1]==0)BHT_new[x].s[0]=0,BHT_new[x].s[1]=1;
+				if(BHT_las[x].s[0]==1&&BHT_las[x].s[1]==1)BHT_new[x].s[0]=1,BHT_new[x].s[1]=0;
+				update_BHT_id=x;
+
+				if(ROB_las.s[b].value)pc_new=ROB_las.s[b].jumppc;
+				else pc_new=ROB_las.s[b].pc+4;
+				Clear_flag=1;
+				if(ROB_las.s[b].ordertype==JALR){
+					
+					// update register
+					int rd=ROB_las.s[b].dest;
+					reg_new[rd].reg=ROB_las.s[b].value;
+					if(reg_las[rd].busy&&reg_las[rd].reorder==b)reg_new[rd].busy=0;
+
+					// 更改 RS
+					for(int j=0;j<MaxRS;j++){
+						if(RS_las.s[j].busy){
+							if(RS_las.s[j].qj==b)RS_new.s[j].qj=-1,RS_new.s[j].vj=ROB_las.s[b].value;
+							if(RS_las.s[j].qk==b)RS_new.s[j].qk=-1,RS_new.s[j].vk=ROB_las.s[b].value;
+						}
+					}
+					// 更改 SLB
+					for(int j=0;j<MaxSLB;j++){
+						if(SLB_las.s[j].qj==b)SLB_new.s[j].qj=-1,SLB_new.s[j].vj=ROB_las.s[b].value;
+						if(SLB_las.s[j].qk==b)SLB_new.s[j].qk=-1,SLB_new.s[j].vk=ROB_las.s[b].value;
 					}
 				}
-				// 更改 SLB
-				for(int j=0;j<MaxSLB;j++){
-					if(SLB_las.s[j].qj==b)SLB_new.s[j].qj=-1,SLB_new.s[j].vj=ROB_las.s[b].value;
-					if(SLB_las.s[j].qk==b)SLB_new.s[j].qk=-1,SLB_new.s[j].vk=ROB_las.s[b].value;
-				}
+				return;
 			}
-			return;
+			else {//预测成功
+				predictSuccess++;
+				// update BHT
+				int x=ROB_las.s[b].inst&0xfff;
+				if(BHT_las[x].s[0]==0&&BHT_las[x].s[1]==0)BHT_new[x].s[0]=0,BHT_new[x].s[1]=0;
+				if(BHT_las[x].s[0]==0&&BHT_las[x].s[1]==1)BHT_new[x].s[0]=0,BHT_new[x].s[1]=0;
+				if(BHT_las[x].s[0]==1&&BHT_las[x].s[1]==0)BHT_new[x].s[0]=1,BHT_new[x].s[1]=1;
+				if(BHT_las[x].s[0]==1&&BHT_las[x].s[1]==1)BHT_new[x].s[0]=1,BHT_new[x].s[1]=1;
+				update_BHT_id=x;
+				return;
+			}
 		}
-		else return;//预测成功
 	}
 	else if(isStore(ROB_las.s[b].ordertype)){
 		if(!ROB_las.s[b].ready){
@@ -694,6 +732,7 @@ void update(){
 	RS_las=RS_new;
 	SLB_las=SLB_new;
 	ROB_las=ROB_new;
+	BHT_las[update_BHT_id]=BHT_new[update_BHT_id];
 	flag_END_las=flag_END_new;
 	Clear_flag=0;
 }
@@ -725,7 +764,8 @@ int main(){
 		if(flag_END_las&&Ins_queue_las.size==0&&ROB_las.size==0)break;
 		// if(Clock==20040)exit(0);
 	}
-	// cout<<Clock<<endl;
 	printf("%u\n",reg_las[10].reg&255u);
+	// printf("Clock=%d\n",Clock);
+	// printf("predict success: %d/%d=%lf\n",predictSuccess,predictTot,predictSuccess*1.0/predictTot);
 	return 0;
 }
