@@ -1,0 +1,3 @@
+/mnt/e/RISC-V-Simulator/cmake/CMakeFiles/rebuild_cache.dir
+/mnt/e/RISC-V-Simulator/cmake/CMakeFiles/edit_cache.dir
+/mnt/e/RISC-V-Simulator/cmake/CMakeFiles/code.dir
