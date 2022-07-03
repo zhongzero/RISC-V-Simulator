@@ -630,7 +630,7 @@ void do_ROB(){
 			}
 		}
 		else {
-			predictTot++;
+			if(ROB_las.s[b].ordertype!=JALR)predictTot++;
 
 			if( (ROB_las.s[b].value^ROB_las.s[b].isjump)==1 || ROB_las.s[b].ordertype==JALR){//预测失败
 
