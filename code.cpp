@@ -745,9 +745,11 @@ int main(){
 		// cout<<"clock="<<Clock<<endl;
 		Get_ins_to_queue();
 		do_ROB();
+		do_ins_queue();
+		//Get_ins_to_queue()要在do_ROB()前面，因为同时修改了pc_new，但do_ROB()优先级更高(do_ROB()中的remake)
+		//do_ROB()要在do_ins_queue()前面，因为同时修改了reg_new，但do_ins_queue()优先级更高
 		do_RS();
 		do_SLB();
-		do_ins_queue();
 		if(Clear_flag)ClearAll();
 		update();
 		// if(OKnum==7000){
