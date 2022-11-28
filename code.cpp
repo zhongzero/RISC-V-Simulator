@@ -115,6 +115,22 @@ public:
 }BHT_las[1<<12],BHT_new[1<<12];
 int update_BHT_id;
 
+void init(){
+	//一部分初始值在定义里已经给出，一部分初始值在下面给出，剩余默认初始值为0
+	
+	// init RS
+	for(int i=0;i<MaxRS;i++){
+		RS_new.s[i].qj=RS_new.s[i].qk=-1;
+		RS_las.s[i].qj=RS_las.s[i].qk=-1;
+	}
+
+	// init SLB
+	for(int i=0;i<MaxSLB;i++){
+		SLB_new.s[i].qj=SLB_new.s[i].qk=-1;
+		SLB_las.s[i].qj=SLB_las.s[i].qk=-1;
+	}
+}
+
 Order Decode(unsigned int s,bool IsOutput=0){
 	// cout<<"@@"<<s<<endl;
 	Order order;
@@ -209,11 +225,11 @@ Order Decode(unsigned int s,bool IsOutput=0){
 	}
 
 	// if(IsOutput){
-	// 	if(s!=0x513)return order;
+	// 	// if(s!=0x513)return order;
 	// 	printf("%x\n",s);
 	// 	cout<<order.type<<endl;
 	// 	cout<<GGG[order.type]<<endl;
-	// 	printf("%d %d %d\n",order.rd,order.rs1,order.imm);
+	// 	printf("%d %d %d %d\n",order.rd,order.rs1,order.rs2,order.imm);
 	// }
 	
 	return order;
@@ -295,7 +311,7 @@ void do_ins_queue(){
 		ROB_new.s[b].inst=tmp.inst, ROB_new.s[b].ordertype=tmp.ordertype;
 		ROB_new.s[b].dest=order.rd , ROB_new.s[b].ready=0;
 		
-		//修改LB
+		//修改SLB
 
 		//根据rs1寄存器的情况决定是否给其renaming(vj,qj)
 		//如果rs1寄存器上为busy且其最后一次修改对应的ROB位置还未commit，则renaming
@@ -455,6 +471,7 @@ void do_RS(){
 
 			// 修改 ROB
 			int b=RS_las.s[i].reorder;
+
 			ROB_new.s[b].value=value , ROB_new.s[b].ready=1;
 			if(RS_las.s[i].ordertype==JALR)ROB_new.s[b].jumppc=jumppc;
 
@@ -539,6 +556,7 @@ void do_SLB(){
 
 				// 更改 SLB
 				SLB_new.size--,SLB_new.L=(SLB_las.L+1)%MaxSLB;
+				SLB_new.s[SLB_las.L].qj=-1,SLB_new.s[SLB_las.L].qk=-1;
 				for(int j=0;j<MaxSLB;j++){
 					if(SLB_las.s[j].qj==b)SLB_new.s[j].qj=-1,SLB_new.s[j].vj=loadvalue;
 					if(SLB_las.s[j].qk==b){
@@ -554,6 +572,7 @@ void do_SLB(){
 
 				// 更改 SLB
 				SLB_new.size--,SLB_new.L=(SLB_las.L+1)%MaxSLB;
+				SLB_new.s[SLB_las.L].qj=-1,SLB_new.s[SLB_las.L].qk=-1;
 
 				// 更改memory
 				StoreData(SLB_las.s[r]);
@@ -579,11 +598,17 @@ void ClearAll(){
 	Ins_queue_new.L=1,Ins_queue_new.R=0,Ins_queue_new.size=0;
 	
 	// clear RS
-	for(int i=0;i<MaxRS;i++)RS_new.s[i].busy=0;
+	for(int i=0;i<MaxRS;i++){
+		RS_new.s[i].busy=0;
+		RS_new.s[i].qj=RS_new.s[i].qk=-1;
+	}
 
 	// clear SLB
 	SLB_new.L=1,SLB_new.R=0,SLB_new.size=0;
 	SLcycle=0;
+	for(int i=0;i<MaxSLB;i++){
+		SLB_new.s[i].qj=SLB_new.s[i].qk=-1;
+	}
 
 	// clear ROB
 	ROB_new.L=1,ROB_new.R=0,ROB_new.size=0;
@@ -652,18 +677,18 @@ void do_ROB(){
 					reg_new[rd].reg=ROB_las.s[b].value;
 					if(reg_las[rd].busy&&reg_las[rd].reorder==b)reg_new[rd].busy=0;
 
-					// 更改 RS
-					for(int j=0;j<MaxRS;j++){
-						if(RS_las.s[j].busy){
-							if(RS_las.s[j].qj==b)RS_new.s[j].qj=-1,RS_new.s[j].vj=ROB_las.s[b].value;
-							if(RS_las.s[j].qk==b)RS_new.s[j].qk=-1,RS_new.s[j].vk=ROB_las.s[b].value;
-						}
-					}
-					// 更改 SLB
-					for(int j=0;j<MaxSLB;j++){
-						if(SLB_las.s[j].qj==b)SLB_new.s[j].qj=-1,SLB_new.s[j].vj=ROB_las.s[b].value;
-						if(SLB_las.s[j].qk==b)SLB_new.s[j].qk=-1,SLB_new.s[j].vk=ROB_las.s[b].value;
-					}
+					// // 更改 RS
+					// for(int j=0;j<MaxRS;j++){
+					// 	if(RS_las.s[j].busy){
+					// 		if(RS_las.s[j].qj==b)RS_new.s[j].qj=-1,RS_new.s[j].vj=ROB_las.s[b].value;
+					// 		if(RS_las.s[j].qk==b)RS_new.s[j].qk=-1,RS_new.s[j].vk=ROB_las.s[b].value;
+					// 	}
+					// }
+					// // 更改 SLB
+					// for(int j=0;j<MaxSLB;j++){
+					// 	if(SLB_las.s[j].qj==b)SLB_new.s[j].qj=-1,SLB_new.s[j].vj=ROB_las.s[b].value;
+					// 	if(SLB_las.s[j].qk==b)SLB_new.s[j].qk=-1,SLB_new.s[j].vk=ROB_las.s[b].value;
+					// }
 				}
 				return;
 			}
@@ -737,6 +762,7 @@ void update(){
 	Clear_flag=0;
 }
 int main(){
+	init();
 	GetData();
 	pc_new=pc_las=0;
 	flag_END_new=flag_END_las=0;
@@ -745,26 +771,26 @@ int main(){
 		// cout<<"clock="<<Clock<<endl;
 		Get_ins_to_queue();
 		do_ROB();
-		do_ins_queue();
 		//Get_ins_to_queue()要在do_ROB()前面，因为同时修改了pc_new，但do_ROB()优先级更高(do_ROB()中的remake)
 		//do_ROB()要在do_ins_queue()前面，因为同时修改了reg_new，但do_ins_queue()优先级更高
+		do_ins_queue();
 		do_RS();
 		do_SLB();
 		if(Clear_flag)ClearAll();
 		update();
 		// if(OKnum==7000){
-		// 	cout<<"Ins_queue.size="<<Ins_queue_las.size<<endl;
-		// 	cout<<"SLB.size="<<SLB_las.size<<endl;
-		// 	cout<<"ROB.size="<<ROB_las.size<<endl;
-		// 	cout<<"ROB.L="<<ROB_las.L<<endl;
-		// 	cout<<"ROB.L type="<<GGG[ROB_las.s[ROB_las.L].ordertype]<<endl;
-		// 	cout<<OKnum<<endl;
-		// 	cout<<Clock<<endl;
-		// 	for(int i=0;i<32;i++)cout<<reg_las[i].reg<<" ";
-		// 	cout<<endl;
+			// cout<<"Ins_queue.size="<<Ins_queue_las.size<<endl;
+			// cout<<"SLB.size="<<SLB_las.size<<endl;
+			// cout<<"ROB.size="<<ROB_las.size<<endl;
+			// cout<<"ROB.L="<<ROB_las.L<<endl;
+			// cout<<"ROB.L type="<<GGG[ROB_las.s[ROB_las.L].ordertype]<<endl;
+			// cout<<OKnum<<endl;
+			// cout<<Clock<<endl;
+			// for(int i=0;i<32;i++)cout<<reg_las[i].reg<<" ";
+			// cout<<endl;
 		// }
 		if(flag_END_las&&Ins_queue_las.size==0&&ROB_las.size==0)break;
-		// if(Clock==20040)exit(0);
+		// if(Clock==40)exit(0);
 	}
 	printf("%u\n",reg_las[10].reg&255u);
 	// printf("Clock=%d\n",Clock);
