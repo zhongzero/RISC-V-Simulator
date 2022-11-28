@@ -306,7 +306,7 @@ bool BranchJudge(int x){
 	return 1;
 }
 void Get_ins_to_queue(){
-	bool hit;
+	bool hit=0;
 	unsigned int inst;
 	if(!Ins_queue_las.is_waiting_ins&&Ins_queue_las.size!=MaxIns){
 		Search_In_ICache(pc_las,hit,inst);
@@ -325,7 +325,8 @@ void Get_ins_to_queue(){
 		Store_In_ICache(pc_las,memctrl_las.ins_ans);
 	}
 	if(memctrl_las.ins_ok||hit){
-		// cout<<"!!!"<<pc_las<<endl;
+		// cout<<memctrl_las.ins_ok<<" "<<hit<<endl;
+		// cout<<"!!!"<<pc_las<<" "<<inst<<endl;
 		Order order=Decode(inst,1);
 		if(order.type==END){flag_END_new=1;return;}
 		Ins_node tmp;
@@ -892,14 +893,18 @@ void mem_ram(bool en_in,bool r_or_w,unsigned int addr,unsigned char data_in,unsi
 	}
 }
 void do_memctrl(){
-	if(!(memctrl_las.data_remain_cycle&&memctrl_las.data_l_or_s==0&&memctrl_las.data_remain_cycle==5)&&
-		!(memctrl_las.data_remain_cycle&&memctrl_las.data_l_or_s==1&&memctrl_las.data_remain_cycle==1) ){
+	bool flag1=!( (1<=memctrl_las.ins_remain_cycle&&memctrl_las.ins_remain_cycle<=3)||memctrl_las.ins_remain_cycle==5 )  
+			&&memctrl_las.data_remain_cycle;
+	
+	if(!(flag1&&memctrl_las.data_l_or_s==0&&memctrl_las.data_remain_cycle==5)&&
+		!(flag1&&memctrl_las.data_l_or_s==1&&memctrl_las.data_remain_cycle==1) ){
 		memctrl_new.data_ok=0;
 	}
-	if( ! (!memctrl_las.data_remain_cycle&&memctrl_las.ins_remain_cycle) ){
+	if( ! (!flag1&&memctrl_las.ins_remain_cycle&&memctrl_las.ins_remain_cycle==5) ){
 		memctrl_new.ins_ok=0;
 	}
-	if(memctrl_las.data_remain_cycle){
+	
+	if(flag1){//ins不在读，且mem可读
 		if(memctrl_las.data_l_or_s==0){//load
 			// unsigned int pos=memctrl_las.data_addr;
 			// if(memctrl_las.data_remain_cycle==4){
@@ -1027,11 +1032,58 @@ void do_memctrl(){
 		}
 	}
 	else if(memctrl_las.ins_remain_cycle){
-		unsigned int tmppc=memctrl_las.ins_addr;
-		//memctrl_las.data_remain_cycle==4
-		memctrl_new.ins_ans=(unsigned int)mem[tmppc]+((unsigned int)mem[tmppc+1]<<8)+((unsigned int)mem[tmppc+2]<<16)+((unsigned int)mem[tmppc+3]<<24);
-		memctrl_new.ins_ok=1;
-		memctrl_new.ins_remain_cycle=0;
+		// unsigned int tmppc=memctrl_las.ins_addr;
+		// //memctrl_las.ins_remain_cycle==4
+		// memctrl_new.ins_ans=(unsigned int)mem[tmppc]+((unsigned int)mem[tmppc+1]<<8)+((unsigned int)mem[tmppc+2]<<16)+((unsigned int)mem[tmppc+3]<<24);
+		// memctrl_new.ins_ok=1;
+		// memctrl_new.ins_remain_cycle=0;
+
+		// cout<<memctrl_las.ins_addr<<" "<<memctrl_new.ins_ans<<endl;
+
+		if(memctrl_las.ins_remain_cycle==4){
+			memctrl_new.ins_remain_cycle=3;
+			memctrl_new.ins_current_pos=memctrl_las.ins_current_pos+1;
+			memctrl_new.ins_addr=memctrl_las.ins_addr+1;
+		}
+		if(memctrl_las.ins_remain_cycle==3){
+			memctrl_new.ins_remain_cycle=2;
+			memctrl_new.ins_current_pos=memctrl_las.ins_current_pos+1;
+			memctrl_new.ins_addr=memctrl_las.ins_addr+1;
+		}
+		if(memctrl_las.ins_remain_cycle==2){
+			memctrl_new.ins_remain_cycle=1;
+			memctrl_new.ins_current_pos=memctrl_las.ins_current_pos+1;
+			memctrl_new.ins_addr=memctrl_las.ins_addr+1;
+		}
+		if(memctrl_las.ins_remain_cycle==1){
+			memctrl_new.ins_remain_cycle=5;
+			memctrl_new.ins_current_pos=memctrl_las.ins_current_pos+1;
+			memctrl_new.ins_addr=memctrl_las.ins_addr+1;
+		}
+		if(memctrl_las.ins_remain_cycle==5){
+			memctrl_new.ins_remain_cycle=0;
+			memctrl_new.ins_current_pos=0;
+			memctrl_new.ins_ok=1;
+		}
+
+		unsigned char ins_in,ins_ans;// ins_in : meaningless
+		bool needvalue=(1<=memctrl_las.ins_remain_cycle&&memctrl_las.ins_remain_cycle<=4);
+		mem_ram(needvalue,0,memctrl_las.ins_addr,ins_in,ins_ans);
+
+		if(memctrl_las.ins_current_pos==1){
+			memctrl_new.ins_ans=(memctrl_las.ins_ans&0xffffff00)|ins_ans;//[7:0]
+		}
+		if(memctrl_las.ins_current_pos==2){
+			memctrl_new.ins_ans=(memctrl_las.ins_ans&0xffff00ff)|((unsigned int)ins_ans<<8);//[15:8]
+		}
+		if(memctrl_las.ins_current_pos==3){
+			memctrl_new.ins_ans=(memctrl_las.ins_ans&0xff00ffff)|((unsigned int)ins_ans<<16);//[23:16]
+		}
+		if(memctrl_las.ins_current_pos==4){
+			memctrl_new.ins_ans=(memctrl_las.ins_ans&0x00ffffff)|((unsigned int)ins_ans<<24);//[31:24]
+		}
+
+		// if(memctrl_new.ins_ok==1)printf("%x\n",memctrl_new.ins_ans);
 	}
 }
 int main(){
