@@ -169,18 +169,18 @@ void init(){
 }
 
 void Search_In_ICache(unsigned int addr1,bool &hit,unsigned int &returnInst){
-	int b1=addr1&(MaxICache-1);
-	if(icache_las.valid[b1]&&icache_las.tag[b1]==(addr1>>IndexSize)){
+	int b5=addr1&(MaxICache-1);
+	if(icache_las.valid[b5]&&icache_las.tag[b5]==(addr1>>IndexSize)){
 		hit=1;
-		returnInst=icache_las.inst[b1];
+		returnInst=icache_las.inst[b5];
 	}
 	else hit=0;
 }
 void Store_In_ICache(unsigned int addr2,unsigned int storeInst){
-	int b2=addr2&(MaxICache-1);
-	icache_new.valid[b2]=1;
-	icache_new.tag[b2]=(addr2>>IndexSize);
-	icache_new.inst[b2]=storeInst;
+	int b6=addr2&(MaxICache-1);
+	icache_new.valid[b6]=1;
+	icache_new.tag[b6]=(addr2>>IndexSize);
+	icache_new.inst[b6]=storeInst;
 }
 
 Order Decode(unsigned int s,bool IsOutput=0){
@@ -360,17 +360,20 @@ void do_ins_queue(){
 	//ROB满了，因此取消issue InstructionQueue中的指令
 	if(ROB_las.size==MaxROB)return;
 	Ins_node tmp=Ins_queue_las.s[Ins_queue_las.L];
+	int r1,r2;
+	int b1;
+	unsigned int h1,h2;
 
 	if(isLoad(tmp.ordertype)||isStore(tmp.ordertype)){ //load指令(LB,LH,LW,LBU,LHU) or store指令(SB,SH,SW)
 		
 		//SLB满了，因此取消issue InstructionQueue中的指令
 		if(SLB_las.size==MaxSLB)return;
 		//r为该指令SLB准备存放的位置
-		int r=(SLB_las.R+1)%MaxSLB;
-		SLB_new.R=r,SLB_new.size++;
+		r1=(SLB_las.R+1)%MaxSLB;
+		SLB_new.R=r1,SLB_new.size++;
 		//b为该指令ROB准备存放的位置
-		int b=(ROB_las.R+1)%MaxROB;
-		ROB_new.R=b,ROB_new.size++;
+		b1=(ROB_las.R+1)%MaxROB;
+		ROB_new.R=b1,ROB_new.size++;
 		//将该指令从Ins_queue删去
 		Ins_queue_new.L=(Ins_queue_las.L+1)%MaxIns;
 		Ins_queue_new.size--;
@@ -379,54 +382,54 @@ void do_ins_queue(){
 		
 		//修改ROB
 		
-		ROB_new.s[b].pc=tmp.pc;
-		ROB_new.s[b].inst=tmp.inst, ROB_new.s[b].ordertype=tmp.ordertype;
-		ROB_new.s[b].dest=order.rd , ROB_new.s[b].ready=0;
+		ROB_new.s[b1].pc=tmp.pc;
+		ROB_new.s[b1].inst=tmp.inst, ROB_new.s[b1].ordertype=tmp.ordertype;
+		ROB_new.s[b1].dest=order.rd , ROB_new.s[b1].ready=0;
 		
 		//修改SLB
 
 		//根据rs1寄存器的情况决定是否给其renaming(vj,qj)
 		//如果rs1寄存器上为busy且其最后一次修改对应的ROB位置还未commit，则renaming
 		if(reg_las[order.rs1].busy){
-			unsigned int h=reg_las[order.rs1].reorder;
-			if(ROB_las.s[h].ready)SLB_new.s[r].vj=ROB_las.s[h].value,SLB_new.s[r].qj=-1;
-			else SLB_new.s[r].qj=h;
+			h1=reg_las[order.rs1].reorder;
+			if(ROB_las.s[h1].ready)SLB_new.s[r1].vj=ROB_las.s[h1].value,SLB_new.s[r1].qj=-1;
+			else SLB_new.s[r1].qj=h1;
 		}
-		else SLB_new.s[r].vj=reg_las[order.rs1].reg,SLB_new.s[r].qj=-1;
+		else SLB_new.s[r1].vj=reg_las[order.rs1].reg,SLB_new.s[r1].qj=-1;
 
 		if(isStore(tmp.ordertype)){// store类型  （有rs2的）
 			//根据rs2寄存器的情况决定是否给其renaming(vk,qk)
 			//如果rs2寄存器上为busy且其最后一次修改对应的ROB位置还未commit，则renaming
 			if(reg_las[order.rs2].busy){
-				unsigned int h=reg_las[order.rs2].reorder;
-				if(ROB_las.s[h].ready)SLB_new.s[r].vk=ROB_las.s[h].value,SLB_new.s[r].qk=-1;
-				else SLB_new.s[r].qk=h;
+				unsigned int h2=reg_las[order.rs2].reorder;
+				if(ROB_las.s[h2].ready)SLB_new.s[r1].vk=ROB_las.s[h2].value,SLB_new.s[r1].qk=-1;
+				else SLB_new.s[r1].qk=h2;
 			}
-			else SLB_new.s[r].vk=reg_las[order.rs2].reg,SLB_new.s[r].qk=-1;
+			else SLB_new.s[r1].vk=reg_las[order.rs2].reg,SLB_new.s[r1].qk=-1;
 		}
-		else SLB_new.s[r].qk=-1;
+		else SLB_new.s[r1].qk=-1;
 		
-		SLB_new.s[r].inst=tmp.inst , SLB_new.s[r].ordertype=tmp.ordertype;
-		SLB_new.s[r].pc=tmp.pc;
-		SLB_new.s[r].A=order.imm , SLB_new.s[r].reorder=b;
-		if(isStore(tmp.ordertype))SLB_new.s[r].ready=0;
+		SLB_new.s[r1].inst=tmp.inst , SLB_new.s[r1].ordertype=tmp.ordertype;
+		SLB_new.s[r1].pc=tmp.pc;
+		SLB_new.s[r1].A=order.imm , SLB_new.s[r1].reorder=b1;
+		if(isStore(tmp.ordertype))SLB_new.s[r1].ready=0;
 
 		//修改register
 
 		if(!isStore(tmp.ordertype)){//不为 store指令  (其他都有rd)
-			reg_new[order.rd].reorder=b,reg_new[order.rd].busy=1;
+			reg_new[order.rd].reorder=b1,reg_new[order.rd].busy=1;
 		}
 	}
 	else {// 计算(LUI,AUIPC,ADD,SUB...) or 无条件跳转(BEQ,BNE,BLE...) or 有条件跳转(JAL,JALR)
 		
 		//找到一个空的RS的位置，r为找到的空的RS的位置
-		int r=-1;
-		for(int i=0;i<MaxRS;i++)if(!RS_las.s[i].busy){r=i;break;}
+		r2=-1;
+		for(int i=0;i<MaxRS;i++)if(!RS_las.s[i].busy){r2=i;}
 		//RS满了，因此取消issue InstructionQueue中的指令
-		if(r==-1)return;
+		if(r2==-1)return;
 		//b为该指令ROB准备存放的位置
-		int b=(ROB_las.R+1)%MaxROB;
-		ROB_new.R=b,ROB_new.size++;
+		b1=(ROB_las.R+1)%MaxROB;
+		ROB_new.R=b1,ROB_new.size++;
 		//将该指令从Ins_queue删去
 		Ins_queue_new.L=(Ins_queue_las.L+1)%MaxIns;
 		Ins_queue_new.size--;
@@ -435,46 +438,46 @@ void do_ins_queue(){
 
 		//修改ROB
 		
-		ROB_new.s[b].inst=tmp.inst, ROB_new.s[b].ordertype=tmp.ordertype;
-		ROB_new.s[b].pc=tmp.pc, ROB_new.s[b].jumppc=tmp.jumppc , ROB_new.s[b].isjump=tmp.isjump;
-		ROB_new.s[b].dest=order.rd , ROB_new.s[b].ready=0;
+		ROB_new.s[b1].inst=tmp.inst, ROB_new.s[b1].ordertype=tmp.ordertype;
+		ROB_new.s[b1].pc=tmp.pc, ROB_new.s[b1].jumppc=tmp.jumppc , ROB_new.s[b1].isjump=tmp.isjump;
+		ROB_new.s[b1].dest=order.rd , ROB_new.s[b1].ready=0;
 
 		//修改RS
 		if( (tmp.inst&0x7f)!=0x37&&(tmp.inst&0x7f)!=0x17 && (tmp.inst&0x7f)!=0x6f ){// 不为LUI,AUIPC,JAL (有rs1的)
 			//根据rs1寄存器的情况决定是否给其renaming(vj,qj)
 			//如果rs1寄存器上为busy且其最后一次修改对应的ROB位置还未commit，则renaming
 			if(reg_las[order.rs1].busy){
-				unsigned int h=reg_las[order.rs1].reorder;
-				if(ROB_las.s[h].ready){
-					RS_new.s[r].vj=ROB_las.s[h].value,RS_new.s[r].qj=-1;
+				unsigned int h1=reg_las[order.rs1].reorder;
+				if(ROB_las.s[h1].ready){
+					RS_new.s[r2].vj=ROB_las.s[h1].value,RS_new.s[r2].qj=-1;
 				}
-				else RS_new.s[r].qj=h;
+				else RS_new.s[r2].qj=h1;
 			}
-			else RS_new.s[r].vj=reg_las[order.rs1].reg,RS_new.s[r].qj=-1;
+			else RS_new.s[r2].vj=reg_las[order.rs1].reg,RS_new.s[r2].qj=-1;
 		}
-		else RS_new.s[r].qj=-1;
+		else RS_new.s[r2].qj=-1;
 
 		if( (tmp.inst&0x7f)==0x33 || (tmp.inst&0x7f)==0x63){// (ADD..AND) or 有条件跳转  （有rs2的）
 			//根据rs2寄存器的情况决定是否给其renaming(vk,qk)
 			//如果rs2寄存器上为busy且其最后一次修改对应的ROB位置还未commit，则renaming
 			if(reg_las[order.rs2].busy){
-				unsigned int h=reg_las[order.rs2].reorder;
-				if(ROB_las.s[h].ready)RS_new.s[r].vk=ROB_las.s[h].value,RS_new.s[r].qk=-1;
-				else RS_new.s[r].qk=h;
+				unsigned int h2=reg_las[order.rs2].reorder;
+				if(ROB_las.s[h2].ready)RS_new.s[r2].vk=ROB_las.s[h2].value,RS_new.s[r2].qk=-1;
+				else RS_new.s[r2].qk=h2;
 			}
-			else RS_new.s[r].vk=reg_las[order.rs2].reg,RS_new.s[r].qk=-1;
+			else RS_new.s[r2].vk=reg_las[order.rs2].reg,RS_new.s[r2].qk=-1;
 		}
-		else RS_new.s[r].qk=-1;
+		else RS_new.s[r2].qk=-1;
 		
 
-		RS_new.s[r].inst=tmp.inst , RS_new.s[r].ordertype=tmp.ordertype;
-		RS_new.s[r].pc=tmp.pc , RS_new.s[r].jumppc=tmp.jumppc;
-		RS_new.s[r].A=order.imm , RS_new.s[r].reorder=b;
-		RS_new.s[r].busy=1;
+		RS_new.s[r2].inst=tmp.inst , RS_new.s[r2].ordertype=tmp.ordertype;
+		RS_new.s[r2].pc=tmp.pc , RS_new.s[r2].jumppc=tmp.jumppc;
+		RS_new.s[r2].A=order.imm , RS_new.s[r2].reorder=b1;
+		RS_new.s[r2].busy=1;
 
 		//修改register
 		if((tmp.inst&0x7f)!=0x63){//不为 有条件跳转  (其他都有rd)
-			reg_new[order.rd].reorder=b,reg_new[order.rd].busy=1;
+			reg_new[order.rd].reorder=b1,reg_new[order.rd].busy=1;
 		}
 	}
 }
@@ -536,31 +539,33 @@ void EX(RS_node tmp,unsigned int &value,unsigned int &jumppc){
 	}
 }
 void do_RS(){
-	for(int i=0;i<MaxRS;i++){
-		if(RS_las.s[i].busy&&RS_las.s[i].qj==-1&&RS_las.s[i].qk==-1){
-			unsigned value,jumppc;
-			EX(RS_las.s[i],value,jumppc);
+	unsigned int RS_id=-1;
+	int b2;
+	for(int i=MaxRS-1;i>=0;i--){
+		if(RS_las.s[i].busy&&RS_las.s[i].qj==-1&&RS_las.s[i].qk==-1)RS_id=i;
+	}
+	if(RS_id!=-1){
+		unsigned int value,jumppc;
+		EX(RS_las.s[RS_id],value,jumppc);
 
-			// 修改 ROB
-			int b=RS_las.s[i].reorder;
-			ROB_new.s[b].value=value , ROB_new.s[b].ready=1;
-			if(RS_las.s[i].ordertype==JALR)ROB_new.s[b].jumppc=jumppc;
+		// 修改 ROB
+		b2=RS_las.s[RS_id].reorder;
+		ROB_new.s[b2].value=value , ROB_new.s[b2].ready=1;
+		if(RS_las.s[RS_id].ordertype==JALR)ROB_new.s[b2].jumppc=jumppc;
 
-			// 修改 RS
-			RS_new.s[i].busy=0;
-			for(int j=0;j<MaxRS;j++){
-				if(RS_las.s[j].busy){
-					if(RS_las.s[j].qj==b)RS_new.s[j].qj=-1,RS_new.s[j].vj=value;
-					if(RS_las.s[j].qk==b)RS_new.s[j].qk=-1,RS_new.s[j].vk=value;
-				}
+		// 修改 RS
+		RS_new.s[RS_id].busy=0;
+		for(int i=0;i<MaxRS;i++){
+			if(RS_las.s[i].busy){
+				if(RS_las.s[i].qj==b2)RS_new.s[i].qj=-1,RS_new.s[i].vj=value;
+				if(RS_las.s[i].qk==b2)RS_new.s[i].qk=-1,RS_new.s[i].vk=value;
 			}
+		}
 
-			// 修改 SLB
-			for(int j=0;j<MaxSLB;j++){
-				if(SLB_las.s[j].qj==b)SLB_new.s[j].qj=-1,SLB_new.s[j].vj=value;
-				if(SLB_las.s[j].qk==b)SLB_new.s[j].qk=-1,SLB_new.s[j].vk=value;
-			}
-			break;
+		// 修改 SLB
+		for(int i=0;i<MaxSLB;i++){
+			if(SLB_las.s[i].qj==b2)SLB_new.s[i].qj=-1,SLB_new.s[i].vj=value;
+			if(SLB_las.s[i].qk==b2)SLB_new.s[i].qk=-1,SLB_new.s[i].vk=value;
 		}
 	}
 }
@@ -595,11 +600,11 @@ void LoadData(SLB_node tmp){
 void Extend_LoadData(SLB_node tmp,unsigned int data,unsigned int &ans){
 	//signed:符号位扩展，unsigned：0扩展
 	if(tmp.ordertype==LB){
-		if((ans>>7)&1)ans=data|(0xffffff00);
+		if((data>>7)&1)ans=data|(0xffffff00);
 		else ans=data&(0x000000ff);
 	}
 	if(tmp.ordertype==LH){
-		if((ans>>15)&1)ans=data|(0xffff0000);
+		if((data>>15)&1)ans=data|(0xffff0000);
 		else ans=data&(0x0000ffff);
 	}
 	if(tmp.ordertype==LW)ans=data;
@@ -629,42 +634,44 @@ void StoreData(SLB_node tmp){
 	}
 }
 void do_SLB(){
+	int r3;
+	int b4;
 	if(memctrl_las.data_ok){
 		SLB_new.is_waiting_data=0;
-		int r=SLB_las.L;
-		if(isLoad(SLB_las.s[r].ordertype)){
+		r3=SLB_las.L;
+		if(isLoad(SLB_las.s[r3].ordertype)){
 			unsigned int loadvalue;
-			Extend_LoadData(SLB_las.s[r],memctrl_las.data_ans,loadvalue);
-			// 更改 ROB
-			int b=SLB_las.s[r].reorder;
-			ROB_new.s[b].value=loadvalue , ROB_new.s[b].ready=1;
+			Extend_LoadData(SLB_las.s[r3],memctrl_las.data_ans,loadvalue);
+			// update ROB
+			b4=SLB_las.s[r3].reorder;
+			ROB_new.s[b4].value=loadvalue , ROB_new.s[b4].ready=1;
 			// cout<<"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ loadvalue="<<loadvalue<<endl;
 
-			// 更改 RS
+			// update RS
 			for(int j=0;j<MaxRS;j++){
 				if(RS_las.s[j].busy){
-					if(RS_las.s[j].qj==b)RS_new.s[j].qj=-1,RS_new.s[j].vj=loadvalue;
-					if(RS_las.s[j].qk==b)RS_new.s[j].qk=-1,RS_new.s[j].vk=loadvalue;
+					if(RS_las.s[j].qj==b4)RS_new.s[j].qj=-1,RS_new.s[j].vj=loadvalue;
+					if(RS_las.s[j].qk==b4)RS_new.s[j].qk=-1,RS_new.s[j].vk=loadvalue;
 				}
 			}
 
-			// 更改 SLB
+			// update SLB
 			SLB_new.size--,SLB_new.L=(SLB_las.L+1)%MaxSLB;
 			SLB_new.s[SLB_las.L].qj=-1,SLB_new.s[SLB_las.L].qk=-1;
 			for(int j=0;j<MaxSLB;j++){
-				if(SLB_las.s[j].qj==b)SLB_new.s[j].qj=-1,SLB_new.s[j].vj=loadvalue;
-				if(SLB_las.s[j].qk==b){
+				if(SLB_las.s[j].qj==b4)SLB_new.s[j].qj=-1,SLB_new.s[j].vj=loadvalue;
+				if(SLB_las.s[j].qk==b4){
 					SLB_new.s[j].qk=-1,SLB_new.s[j].vk=loadvalue;
 				}
 			}
 
 		}
 		else {
-			// 更改 ROB
-			int b=SLB_las.s[r].reorder;
-			ROB_new.s[b].ready=1;
+			// update ROB
+			b4=SLB_las.s[r3].reorder;
+			ROB_new.s[b4].ready=1;
 
-			// 更改 SLB
+			// update SLB
 			SLB_new.size--,SLB_new.L=(SLB_las.L+1)%MaxSLB;
 			SLB_new.s[SLB_las.L].qj=-1,SLB_new.s[SLB_las.L].qk=-1;
 		}
@@ -673,18 +680,17 @@ void do_SLB(){
 	// cout<<"!!!"<<SLB_las.s[7].qj<<" "<<SLB_las.s[7].vj<<endl;
 
 	if(!SLB_las.is_waiting_data&&SLB_las.size){
-		int r=SLB_las.L;
-		if(isLoad(SLB_las.s[r].ordertype)){
-			if(SLB_las.s[r].qj==-1){
-				LoadData(SLB_las.s[r]);
+		r3=SLB_las.L;
+		if(isLoad(SLB_las.s[r3].ordertype)){
+			if(SLB_las.s[r3].qj==-1){
+				LoadData(SLB_las.s[r3]);
 				SLB_new.is_waiting_data=1;
 			}
 		}
 		else {
-			memctrl_new.data_l_or_s=1;
-			if(SLB_las.s[r].qj==-1&&SLB_las.s[r].qk==-1&&SLB_las.s[r].ready){
-				// cout<<"!!!!"<<r<<" "<<SLB_las.s[r].vj<<endl; //r=7
-				StoreData(SLB_las.s[r]);
+			if(SLB_las.s[r3].qj==-1&&SLB_las.s[r3].qk==-1&&SLB_las.s[r3].ready){
+				// cout<<"!!!!"<<r3<<" "<<SLB_las.s[r3].vj<<endl; //r3=7
+				StoreData(SLB_las.s[r3]);
 				SLB_new.is_waiting_data=1;
 			}
 		}
@@ -732,10 +738,12 @@ void ClearAll(){
 bool Clear_flag=0;
 void do_ROB(){
 	if(!ROB_las.size)return;
-	int b=ROB_las.L;
+	int b3=ROB_las.L;
 
-	if(isBranch(ROB_las.s[b].ordertype)){
-		if(!ROB_las.s[b].ready)return;
+	unsigned int commit_rd;
+
+	if(isBranch(ROB_las.s[b3].ordertype)){
+		if(!ROB_las.s[b3].ready)return;
 		OKnum++;
 		
 		// update ROB
@@ -743,118 +751,114 @@ void do_ROB(){
 
 		//JAL必定预测成功
 		//让JALR必定预测失败
-		if(ROB_las.s[b].ordertype==JAL){
+		if(ROB_las.s[b3].ordertype==JAL){
 
 			// update register
-			int rd=ROB_las.s[b].dest;
-			reg_new[rd].reg=ROB_las.s[b].value;
-			if(reg_las[rd].busy&&reg_las[rd].reorder==b)reg_new[rd].busy=0;
-			// 更改 RS
+			commit_rd=ROB_las.s[b3].dest;
+			reg_new[commit_rd].reg=ROB_las.s[b3].value;
+			if(reg_las[commit_rd].busy&&reg_las[commit_rd].reorder==b3)reg_new[commit_rd].busy=0;
+			// update RS
 			for(int j=0;j<MaxRS;j++){
 				if(RS_las.s[j].busy){
-					if(RS_las.s[j].qj==b)RS_new.s[j].qj=-1,RS_new.s[j].vj=ROB_las.s[b].value;
-					if(RS_las.s[j].qk==b)RS_new.s[j].qk=-1,RS_new.s[j].vk=ROB_las.s[b].value;
+					if(RS_las.s[j].qj==b3)RS_new.s[j].qj=-1,RS_new.s[j].vj=ROB_las.s[b3].value;
+					if(RS_las.s[j].qk==b3)RS_new.s[j].qk=-1,RS_new.s[j].vk=ROB_las.s[b3].value;
 				}
 			}
-			// 更改 SLB
+			// update SLB
 			for(int j=0;j<MaxSLB;j++){
-				if(SLB_las.s[j].qj==b)SLB_new.s[j].qj=-1,SLB_new.s[j].vj=ROB_las.s[b].value;
-				if(SLB_las.s[j].qk==b)SLB_new.s[j].qk=-1,SLB_new.s[j].vk=ROB_las.s[b].value;
+				if(SLB_las.s[j].qj==b3)SLB_new.s[j].qj=-1,SLB_new.s[j].vj=ROB_las.s[b3].value;
+				if(SLB_las.s[j].qk==b3)SLB_new.s[j].qk=-1,SLB_new.s[j].vk=ROB_las.s[b3].value;
 			}
 		}
 		else {
-			if(ROB_las.s[b].ordertype!=JALR)predictTot++;
+			if(ROB_las.s[b3].ordertype!=JALR)predictTot++;
 
-			if( (ROB_las.s[b].value^ROB_las.s[b].isjump)==1 || ROB_las.s[b].ordertype==JALR){//预测失败
+			if( (ROB_las.s[b3].value^ROB_las.s[b3].isjump)==1 || ROB_las.s[b3].ordertype==JALR){//预测失败
 
 				// update BHT
-				int x=ROB_las.s[b].inst&0xfff;
+				int x=ROB_las.s[b3].inst&0xfff;
 				if(BHT_las[x].s[0]==0&&BHT_las[x].s[1]==0)BHT_new[x].s[0]=0,BHT_new[x].s[1]=1;
 				if(BHT_las[x].s[0]==0&&BHT_las[x].s[1]==1)BHT_new[x].s[0]=1,BHT_new[x].s[1]=0;
 				if(BHT_las[x].s[0]==1&&BHT_las[x].s[1]==0)BHT_new[x].s[0]=0,BHT_new[x].s[1]=1;
 				if(BHT_las[x].s[0]==1&&BHT_las[x].s[1]==1)BHT_new[x].s[0]=1,BHT_new[x].s[1]=0;
 				update_BHT_id=x;
 
-				if(ROB_las.s[b].value)pc_new=ROB_las.s[b].jumppc;
-				else pc_new=ROB_las.s[b].pc+4;
+				if(ROB_las.s[b3].value)pc_new=ROB_las.s[b3].jumppc;
+				else pc_new=ROB_las.s[b3].pc+4;
 				Clear_flag=1;
-				if(ROB_las.s[b].ordertype==JALR){
+				if(ROB_las.s[b3].ordertype==JALR){
 					
 					// update register
-					int rd=ROB_las.s[b].dest;
-					reg_new[rd].reg=ROB_las.s[b].value;
-					if(reg_las[rd].busy&&reg_las[rd].reorder==b)reg_new[rd].busy=0;
+					commit_rd=ROB_las.s[b3].dest;
+					reg_new[commit_rd].reg=ROB_las.s[b3].value;
+					if(reg_las[commit_rd].busy&&reg_las[commit_rd].reorder==b3)reg_new[commit_rd].busy=0;
 
-					// // 更改 RS
+					// // update RS
 					// for(int j=0;j<MaxRS;j++){
 					// 	if(RS_las.s[j].busy){
-					// 		if(RS_las.s[j].qj==b)RS_new.s[j].qj=-1,RS_new.s[j].vj=ROB_las.s[b].value;
-					// 		if(RS_las.s[j].qk==b)RS_new.s[j].qk=-1,RS_new.s[j].vk=ROB_las.s[b].value;
+					// 		if(RS_las.s[j].qj==b3)RS_new.s[j].qj=-1,RS_new.s[j].vj=ROB_las.s[b3].value;
+					// 		if(RS_las.s[j].qk==b3)RS_new.s[j].qk=-1,RS_new.s[j].vk=ROB_las.s[b3].value;
 					// 	}
 					// }
-					// // 更改 SLB
+					// // update SLB
 					// for(int j=0;j<MaxSLB;j++){
-					// 	if(SLB_las.s[j].qj==b)SLB_new.s[j].qj=-1,SLB_new.s[j].vj=ROB_las.s[b].value;
-					// 	if(SLB_las.s[j].qk==b)SLB_new.s[j].qk=-1,SLB_new.s[j].vk=ROB_las.s[b].value;
+					// 	if(SLB_las.s[j].qj==b3)SLB_new.s[j].qj=-1,SLB_new.s[j].vj=ROB_las.s[b3].value;
+					// 	if(SLB_las.s[j].qk==b3)SLB_new.s[j].qk=-1,SLB_new.s[j].vk=ROB_las.s[b3].value;
 					// }
 				}
-				return;
 			}
 			else {//预测成功
 				predictSuccess++;
 				// update BHT
-				int x=ROB_las.s[b].inst&0xfff;
+				int x=ROB_las.s[b3].inst&0xfff;
 				if(BHT_las[x].s[0]==0&&BHT_las[x].s[1]==0)BHT_new[x].s[0]=0,BHT_new[x].s[1]=0;
 				if(BHT_las[x].s[0]==0&&BHT_las[x].s[1]==1)BHT_new[x].s[0]=0,BHT_new[x].s[1]=0;
 				if(BHT_las[x].s[0]==1&&BHT_las[x].s[1]==0)BHT_new[x].s[0]=1,BHT_new[x].s[1]=1;
 				if(BHT_las[x].s[0]==1&&BHT_las[x].s[1]==1)BHT_new[x].s[0]=1,BHT_new[x].s[1]=1;
 				update_BHT_id=x;
-				return;
 			}
 		}
 	}
-	else if(isStore(ROB_las.s[b].ordertype)){
-		if(!ROB_las.s[b].ready){
+	else if(isStore(ROB_las.s[b3].ordertype)){
+		if(!ROB_las.s[b3].ready){
 			// update SLB
 			for(int i=0;i<MaxSLB;i++){
-				if(SLB_las.s[i].reorder==b){
+				if(SLB_las.s[i].reorder==b3){
 					SLB_new.s[i].ready=1;
 				}
 			}
-			return;
 		}
-		OKnum++;
-		// update ROB
-		ROB_new.size--,ROB_new.L=(ROB_las.L+1)%MaxROB;
-		return;
+		else {
+			OKnum++;
+			// update ROB
+			ROB_new.size--,ROB_new.L=(ROB_las.L+1)%MaxROB;
+		}
 	}
 	else {//Load or calc
-		if(!ROB_las.s[b].ready)return;
+		if(!ROB_las.s[b3].ready)return;
 		OKnum++;
 		
 		// update ROB
 		ROB_new.size--,ROB_new.L=(ROB_las.L+1)%MaxROB;
 
 		// update register
-		int rd=ROB_las.s[b].dest;
-		reg_new[rd].reg=ROB_las.s[b].value;
-		if(reg_las[rd].busy&&reg_las[rd].reorder==b)reg_new[rd].busy=0;
+		commit_rd=ROB_las.s[b3].dest;
+		reg_new[commit_rd].reg=ROB_las.s[b3].value;
+		if(reg_las[commit_rd].busy&&reg_las[commit_rd].reorder==b3)reg_new[commit_rd].busy=0;
 
-		// 更改 RS
+		// update RS
 		for(int j=0;j<MaxRS;j++){
 			if(RS_las.s[j].busy){
-				if(RS_las.s[j].qj==b)RS_new.s[j].qj=-1,RS_new.s[j].vj=ROB_las.s[b].value;
-				if(RS_las.s[j].qk==b)RS_new.s[j].qk=-1,RS_new.s[j].vk=ROB_las.s[b].value;
+				if(RS_las.s[j].qj==b3)RS_new.s[j].qj=-1,RS_new.s[j].vj=ROB_las.s[b3].value;
+				if(RS_las.s[j].qk==b3)RS_new.s[j].qk=-1,RS_new.s[j].vk=ROB_las.s[b3].value;
 			}
 		}
 
-		// 更改 SLB
+		// update SLB
 		for(int j=0;j<MaxSLB;j++){
-			if(SLB_las.s[j].qj==b)SLB_new.s[j].qj=-1,SLB_new.s[j].vj=ROB_las.s[b].value;
-			if(SLB_las.s[j].qk==b)SLB_new.s[j].qk=-1,SLB_new.s[j].vk=ROB_las.s[b].value;
+			if(SLB_las.s[j].qj==b3)SLB_new.s[j].qj=-1,SLB_new.s[j].vj=ROB_las.s[b3].value;
+			if(SLB_las.s[j].qk==b3)SLB_new.s[j].qk=-1,SLB_new.s[j].vk=ROB_las.s[b3].value;
 		}
-
-		return;
 	}
 }
 void update(){
