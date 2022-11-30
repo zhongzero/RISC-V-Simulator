@@ -6,6 +6,7 @@
 #define MaxReg 32
 #define IndexSize 5
 #define MaxICache 32
+#define MaxBHT (1<<12)
 using namespace std;
 
 enum Ordertype{
@@ -117,10 +118,10 @@ public:
 class Branch_History_Table{
 public:
 	bool s[2];// 00 强不跳； 01 弱不跳； 10 弱跳； 11 弱不跳；
-}BHT_las[1<<12],BHT_new[1<<12];
+}BHT_las[MaxBHT],BHT_new[MaxBHT];
 int update_BHT_id;
 
-class MemCtrl{//一次只能曾内存中读取1byte(8bit)
+class MemCtrl{//一次只能从内存中读取1byte(8bit)
 public:
 	unsigned int ins_addr;
 	int ins_remain_cycle=0;
@@ -167,19 +168,19 @@ void init(){
 	}
 }
 
-void Search_In_ICache(unsigned int addr,bool &hit,unsigned int &returnInst){
-	int b=addr&(MaxICache-1);
-	if(icache_las.valid[b]&&icache_las.tag[b]==(addr>>IndexSize)){
+void Search_In_ICache(unsigned int addr1,bool &hit,unsigned int &returnInst){
+	int b1=addr1&(MaxICache-1);
+	if(icache_las.valid[b1]&&icache_las.tag[b1]==(addr1>>IndexSize)){
 		hit=1;
-		returnInst=icache_las.inst[b];
+		returnInst=icache_las.inst[b1];
 	}
 	else hit=0;
 }
-void Store_In_ICache(unsigned int addr,unsigned int storeInst){
-	int b=addr&(MaxICache-1);
-	icache_new.valid[b]=1;
-	icache_new.tag[b]=(addr>>IndexSize);
-	icache_new.inst[b]=storeInst;
+void Store_In_ICache(unsigned int addr2,unsigned int storeInst){
+	int b2=addr2&(MaxICache-1);
+	icache_new.valid[b2]=1;
+	icache_new.tag[b2]=(addr2>>IndexSize);
+	icache_new.inst[b2]=storeInst;
 }
 
 Order Decode(unsigned int s,bool IsOutput=0){
@@ -301,8 +302,8 @@ bool isStore(Ordertype type){
 }
 
 bool flag_END_las,flag_END_new;
-bool BranchJudge(int x){
-	if(BHT_las[x].s[0]==0)return 0;
+bool BranchJudge(int bht_id){
+	if(BHT_las[bht_id].s[0]==0)return 0;
 	return 1;
 }
 void Get_ins_to_queue(){
@@ -330,6 +331,9 @@ void Get_ins_to_queue(){
 		Order order=Decode(inst,1);
 		if(order.type==END){flag_END_new=1;return;}
 		Ins_node tmp;
+		int g=(Ins_queue_las.R+1)%MaxIns;
+		Ins_queue_new.R=g;
+		Ins_queue_new.size++;
 
 		tmp.inst=inst,tmp.ordertype=order.type,tmp.pc=pc_las;
 		if(isBranch(order.type)){
@@ -346,10 +350,8 @@ void Get_ins_to_queue(){
 			}
 		}
 		else pc_new=pc_las+4;
-		int g=(Ins_queue_las.R+1)%MaxIns;
-		Ins_queue_new.R=g;
+		
 		Ins_queue_new.s[g]=tmp;
-		Ins_queue_new.size++;
 	}
 }
 void do_ins_queue(){
@@ -363,7 +365,7 @@ void do_ins_queue(){
 		
 		//SLB满了，因此取消issue InstructionQueue中的指令
 		if(SLB_las.size==MaxSLB)return;
-		//b为该指令SLB准备存放的位置
+		//r为该指令SLB准备存放的位置
 		int r=(SLB_las.R+1)%MaxSLB;
 		SLB_new.R=r,SLB_new.size++;
 		//b为该指令ROB准备存放的位置
@@ -387,7 +389,7 @@ void do_ins_queue(){
 		//如果rs1寄存器上为busy且其最后一次修改对应的ROB位置还未commit，则renaming
 		if(reg_las[order.rs1].busy){
 			unsigned int h=reg_las[order.rs1].reorder;
-			if(ROB_new.s[h].ready)SLB_new.s[r].vj=ROB_new.s[h].value,SLB_new.s[r].qj=-1;
+			if(ROB_las.s[h].ready)SLB_new.s[r].vj=ROB_las.s[h].value,SLB_new.s[r].qj=-1;
 			else SLB_new.s[r].qj=h;
 		}
 		else SLB_new.s[r].vj=reg_las[order.rs1].reg,SLB_new.s[r].qj=-1;
@@ -397,7 +399,7 @@ void do_ins_queue(){
 			//如果rs2寄存器上为busy且其最后一次修改对应的ROB位置还未commit，则renaming
 			if(reg_las[order.rs2].busy){
 				unsigned int h=reg_las[order.rs2].reorder;
-				if(ROB_new.s[h].ready)SLB_new.s[r].vk=ROB_new.s[h].value,SLB_new.s[r].qk=-1;
+				if(ROB_las.s[h].ready)SLB_new.s[r].vk=ROB_las.s[h].value,SLB_new.s[r].qk=-1;
 				else SLB_new.s[r].qk=h;
 			}
 			else SLB_new.s[r].vk=reg_las[order.rs2].reg,SLB_new.s[r].qk=-1;
@@ -443,8 +445,8 @@ void do_ins_queue(){
 			//如果rs1寄存器上为busy且其最后一次修改对应的ROB位置还未commit，则renaming
 			if(reg_las[order.rs1].busy){
 				unsigned int h=reg_las[order.rs1].reorder;
-				if(ROB_new.s[h].ready){
-					RS_new.s[r].vj=ROB_new.s[h].value,RS_new.s[r].qj=-1;
+				if(ROB_las.s[h].ready){
+					RS_new.s[r].vj=ROB_las.s[h].value,RS_new.s[r].qj=-1;
 				}
 				else RS_new.s[r].qj=h;
 			}
@@ -457,7 +459,7 @@ void do_ins_queue(){
 			//如果rs2寄存器上为busy且其最后一次修改对应的ROB位置还未commit，则renaming
 			if(reg_las[order.rs2].busy){
 				unsigned int h=reg_las[order.rs2].reorder;
-				if(ROB_new.s[h].ready)RS_new.s[r].vk=ROB_new.s[h].value,RS_new.s[r].qk=-1;
+				if(ROB_las.s[h].ready)RS_new.s[r].vk=ROB_las.s[h].value,RS_new.s[r].qk=-1;
 				else RS_new.s[r].qk=h;
 			}
 			else RS_new.s[r].vk=reg_las[order.rs2].reg,RS_new.s[r].qk=-1;
@@ -947,8 +949,8 @@ void do_memctrl(){
 			}
 
 			unsigned char data_in,data_ans;// data_in : meaningless
-			bool needvalue=(1<=memctrl_las.data_remain_cycle&&memctrl_las.data_remain_cycle<=4);
-			mem_ram(needvalue,0,memctrl_las.data_addr,data_in,data_ans);
+			bool need=(1<=memctrl_las.data_remain_cycle&&memctrl_las.data_remain_cycle<=4);
+			mem_ram(need,0,memctrl_las.data_addr,data_in,data_ans);
 
 			if(memctrl_las.data_current_pos==1){
 				memctrl_new.data_ans=(memctrl_las.data_ans&0xffffff00)|data_ans;//[7:0]
@@ -1027,8 +1029,8 @@ void do_memctrl(){
 			// cout<<memctrl_las.data_addr<<" "<<(unsigned int)data_in<<" "<<memctrl_las.data_in<<endl;
 			
 
-			bool needvalue=(1<=memctrl_las.data_remain_cycle&&memctrl_las.data_remain_cycle<=4);
-			mem_ram(needvalue,1,memctrl_las.data_addr,data_in,data_ans);
+			bool need=(1<=memctrl_las.data_remain_cycle&&memctrl_las.data_remain_cycle<=4);
+			mem_ram(need,1,memctrl_las.data_addr,data_in,data_ans);
 		}
 	}
 	else if(memctrl_las.ins_remain_cycle){
@@ -1067,8 +1069,8 @@ void do_memctrl(){
 		}
 
 		unsigned char ins_in,ins_ans;// ins_in : meaningless
-		bool needvalue=(1<=memctrl_las.ins_remain_cycle&&memctrl_las.ins_remain_cycle<=4);
-		mem_ram(needvalue,0,memctrl_las.ins_addr,ins_in,ins_ans);
+		bool need=(1<=memctrl_las.ins_remain_cycle&&memctrl_las.ins_remain_cycle<=4);
+		mem_ram(need,0,memctrl_las.ins_addr,ins_in,ins_ans);
 
 		if(memctrl_las.ins_current_pos==1){
 			memctrl_new.ins_ans=(memctrl_las.ins_ans&0xffffff00)|ins_ans;//[7:0]

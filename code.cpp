@@ -317,7 +317,7 @@ void do_ins_queue(){
 		//如果rs1寄存器上为busy且其最后一次修改对应的ROB位置还未commit，则renaming
 		if(reg_las[order.rs1].busy){
 			unsigned int h=reg_las[order.rs1].reorder;
-			if(ROB_new.s[h].ready)SLB_new.s[r].vj=ROB_new.s[h].value,SLB_new.s[r].qj=-1;
+			if(ROB_las.s[h].ready)SLB_new.s[r].vj=ROB_las.s[h].value,SLB_new.s[r].qj=-1;
 			else SLB_new.s[r].qj=h;
 		}
 		else SLB_new.s[r].vj=reg_las[order.rs1].reg,SLB_new.s[r].qj=-1;
@@ -327,7 +327,7 @@ void do_ins_queue(){
 			//如果rs2寄存器上为busy且其最后一次修改对应的ROB位置还未commit，则renaming
 			if(reg_las[order.rs2].busy){
 				unsigned int h=reg_las[order.rs2].reorder;
-				if(ROB_new.s[h].ready)SLB_new.s[r].vk=ROB_new.s[h].value,SLB_new.s[r].qk=-1;
+				if(ROB_las.s[h].ready)SLB_new.s[r].vk=ROB_las.s[h].value,SLB_new.s[r].qk=-1;
 				else SLB_new.s[r].qk=h;
 			}
 			else SLB_new.s[r].vk=reg_las[order.rs2].reg,SLB_new.s[r].qk=-1;
@@ -373,8 +373,8 @@ void do_ins_queue(){
 			//如果rs1寄存器上为busy且其最后一次修改对应的ROB位置还未commit，则renaming
 			if(reg_las[order.rs1].busy){
 				unsigned int h=reg_las[order.rs1].reorder;
-				if(ROB_new.s[h].ready){
-					RS_new.s[r].vj=ROB_new.s[h].value,RS_new.s[r].qj=-1;
+				if(ROB_las.s[h].ready){
+					RS_new.s[r].vj=ROB_las.s[h].value,RS_new.s[r].qj=-1;
 				}
 				else RS_new.s[r].qj=h;
 			}
@@ -387,7 +387,7 @@ void do_ins_queue(){
 			//如果rs2寄存器上为busy且其最后一次修改对应的ROB位置还未commit，则renaming
 			if(reg_las[order.rs2].busy){
 				unsigned int h=reg_las[order.rs2].reorder;
-				if(ROB_new.s[h].ready)RS_new.s[r].vk=ROB_new.s[h].value,RS_new.s[r].qk=-1;
+				if(ROB_las.s[h].ready)RS_new.s[r].vk=ROB_las.s[h].value,RS_new.s[r].qk=-1;
 				else RS_new.s[r].qk=h;
 			}
 			else RS_new.s[r].vk=reg_las[order.rs2].reg,RS_new.s[r].qk=-1;
