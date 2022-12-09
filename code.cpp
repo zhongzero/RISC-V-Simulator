@@ -188,6 +188,7 @@ Order Decode(unsigned int s,bool IsOutput=0){
 			}
 		}
 		order.imm=(s>>20);
+		if(order.type==SRAI)order.imm-=1024;
 	}
 	if(type1==0x23){//S类型
 		if(type2==0x0)order.type=SB;

@@ -4,10 +4,11 @@
 #define MaxROB 32
 #define MaxSLB 32
 #define MaxReg 32
-#define IndexSize 5
-#define MaxICache 32
+#define IndexSize 8
+#define MaxICache 256
 #define MaxBHT (1<<12)
 using namespace std;
+const bool debugflag=0;
 
 enum Ordertype{
     LUI,AUIPC,  //U类型 用于操作长立即数的指令 0~1
@@ -42,7 +43,6 @@ void GetData(){
 		if(tmp[0]=='@')pos=Get0x(tmp,1,strlen(tmp)-1);
 		else {
 			mem[pos]=Get0x(tmp,0,strlen(tmp)-1);
-			// printf("! %x %x\n",pos,mem[pos]);
 			pos++;
 		}
 	}
@@ -148,7 +148,7 @@ unsigned int lasans;
 // [31:5] [4:0]  empty
 struct ICache{//direct mapping
 	bool valid[MaxICache];
-	int tag[MaxICache];
+	unsigned int tag[MaxICache];
 	unsigned int inst[MaxICache];
 }icache_las,icache_new;
 
@@ -169,7 +169,7 @@ void init(){
 }
 
 void Search_In_ICache(unsigned int addr1,bool &hit,unsigned int &returnInst){
-	int b5=addr1&(MaxICache-1);
+	unsigned int b5=addr1&(MaxICache-1);
 	if(icache_las.valid[b5]&&icache_las.tag[b5]==(addr1>>IndexSize)){
 		hit=1;
 		returnInst=icache_las.inst[b5];
@@ -177,7 +177,7 @@ void Search_In_ICache(unsigned int addr1,bool &hit,unsigned int &returnInst){
 	else hit=0;
 }
 void Store_In_ICache(unsigned int addr2,unsigned int storeInst){
-	int b6=addr2&(MaxICache-1);
+	unsigned int b6=addr2&(MaxICache-1);
 	icache_new.valid[b6]=1;
 	icache_new.tag[b6]=(addr2>>IndexSize);
 	icache_new.inst[b6]=storeInst;
@@ -240,6 +240,7 @@ Order Decode(unsigned int s,bool IsOutput=0){
 			}
 		}
 		order.imm=(s>>20);
+		if(order.type==SRAI)order.imm-=1024;
 	}
 	if(type1==0x23){//S类型
 		if(type2==0x0)order.type=SB;
@@ -275,14 +276,17 @@ Order Decode(unsigned int s,bool IsOutput=0){
 	if(order.type==BEQ||order.type==BNE||order.type==BLT||order.type==BGE||order.type==BLTU||order.type==BGEU){
 		if(order.imm>>12)order.imm|=0xffffe000;
 	}
-
-	// if(IsOutput){
-	// 	if(s!=0x513)return order;
-	// 	printf("%x\n",s);
-	// 	cout<<order.type<<endl;
-	// 	cout<<GGG[order.type]<<endl;
-	// 	printf("%d %d %d\n",order.rd,order.rs1,order.imm);
-	// }
+	if(debugflag){
+		if(IsOutput){
+			// if(Clock*2+51>=4491700){
+				cout<<"clock="<<Clock*2+51<<endl;
+				printf("%x\n",s);
+				printf("%x\n",order.type);
+				cout<<GGG[order.type]<<endl;
+				printf("%x %x %x %x\n",order.rd,order.rs1,order.rs2,order.imm);
+			// }
+		}
+	}
 	
 	return order;
 }
@@ -303,6 +307,7 @@ bool isStore(Ordertype type){
 
 bool flag_END_las,flag_END_new;
 bool BranchJudge(int bht_id){
+	// return 0;//先让预测始终失效 $$$$
 	if(BHT_las[bht_id].s[0]==0)return 0;
 	return 1;
 }
@@ -327,9 +332,22 @@ void Get_ins_to_queue(){
 	}
 	if(memctrl_las.ins_ok||hit){
 		// cout<<memctrl_las.ins_ok<<" "<<hit<<endl;
-		// cout<<"!!!"<<pc_las<<" "<<inst<<endl;
+		if(debugflag){
+			// if(Clock*2+51>=4491700){
+				cout<<"clock="<<Clock*2+51<<endl;
+				printf("pc=%x\n",pc_las);
+			// }
+		}
 		Order order=Decode(inst,1);
-		if(order.type==END){flag_END_new=1;return;}
+		if(debugflag){
+			// if(Clock*2+51>=74000&&Clock*2+51<=80000){
+			// 	if(Clock<=1000){
+			// 		for(int i=0;i<MaxReg;i++)printf("%x ",reg_las[i].reg);
+			// 		cout<<"  reg"<<endl;
+			// 	}
+			// }
+		}
+		if(order.type==END){cout<<"END"<<endl;flag_END_new=1;return;}
 		Ins_node tmp;
 		int g=(Ins_queue_las.R+1)%MaxIns;
 		Ins_queue_new.R=g;
@@ -353,6 +371,11 @@ void Get_ins_to_queue(){
 		
 		Ins_queue_new.s[g]=tmp;
 	}
+	// if(Clock*2+51<=80000){
+	// // if(Clock*2+51>=74000&&Clock*2+51<=80000){
+	// 	for(int i=0;i<MaxReg;i++)printf("%x ",reg_las[i].reg);
+	// 	cout<<"  reg"<<endl;
+	// }
 }
 void do_ins_queue(){
 	//InstructionQueue为空，因此取消issue InstructionQueue中的指令
@@ -424,12 +447,11 @@ void do_ins_queue(){
 		
 		//找到一个空的RS的位置，r为找到的空的RS的位置
 		r2=-1;
-		for(int i=0;i<MaxRS;i++)if(!RS_las.s[i].busy){r2=i;}
+		for(int i=MaxRS-1;i>=0;i--)if(!RS_las.s[i].busy){r2=i;}
 		//RS满了，因此取消issue InstructionQueue中的指令
 		if(r2==-1)return;
 		//b为该指令ROB准备存放的位置
 		b1=(ROB_las.R+1)%MaxROB;
-		ROB_new.R=b1,ROB_new.size++;
 		//将该指令从Ins_queue删去
 		Ins_queue_new.L=(Ins_queue_las.L+1)%MaxIns;
 		Ins_queue_new.size--;
@@ -437,7 +459,7 @@ void do_ins_queue(){
 		Order order=Decode(tmp.inst);
 
 		//修改ROB
-		
+		ROB_new.R=b1,ROB_new.size++;
 		ROB_new.s[b1].inst=tmp.inst, ROB_new.s[b1].ordertype=tmp.ordertype;
 		ROB_new.s[b1].pc=tmp.pc, ROB_new.s[b1].jumppc=tmp.jumppc , ROB_new.s[b1].isjump=tmp.isjump;
 		ROB_new.s[b1].dest=order.rd , ROB_new.s[b1].ready=0;
@@ -479,6 +501,9 @@ void do_ins_queue(){
 		if((tmp.inst&0x7f)!=0x63){//不为 有条件跳转  (其他都有rd)
 			reg_new[order.rd].reorder=b1,reg_new[order.rd].busy=1;
 		}
+
+		// cout<<"@@@"<<GGG[order.type]<<endl;
+		// printf("%x %x %x %x\n",RS_new.s[r2].vj,RS_new.s[r2].vk,RS_new.s[r2].qj,RS_new.s[r2].qk);
 	}
 }
 void EX(RS_node tmp,unsigned int &value,unsigned int &jumppc){
@@ -676,8 +701,6 @@ void do_SLB(){
 			SLB_new.s[SLB_las.L].qj=-1,SLB_new.s[SLB_las.L].qk=-1;
 		}
 	}
-	// cout<<"@@@@@@@@"<<SLB_las.L<<endl;
-	// cout<<"!!!"<<SLB_las.s[7].qj<<" "<<SLB_las.s[7].vj<<endl;
 
 	if(!SLB_las.is_waiting_data&&SLB_las.size){
 		r3=SLB_las.L;
@@ -689,7 +712,6 @@ void do_SLB(){
 		}
 		else {
 			if(SLB_las.s[r3].qj==-1&&SLB_las.s[r3].qk==-1&&SLB_las.s[r3].ready){
-				// cout<<"!!!!"<<r3<<" "<<SLB_las.s[r3].vj<<endl; //r3=7
 				StoreData(SLB_las.s[r3]);
 				SLB_new.is_waiting_data=1;
 			}
@@ -697,7 +719,7 @@ void do_SLB(){
 	}
 }
 void ClearAll(){
-	// cout<<"!!!!  ClearAll  !!!!"<<endl;
+	// cout<<"ClearAll"<<endl;
 
 	// clear ins_queue
 	Ins_queue_new.L=1,Ins_queue_new.R=0,Ins_queue_new.size=0,Ins_queue_new.is_waiting_ins=0;
@@ -724,9 +746,6 @@ void ClearAll(){
 	//clear memctrl
 	memctrl_new.ins_remain_cycle=0,memctrl_new.ins_current_pos=0,memctrl_new.ins_ok=0;
 	memctrl_new.data_remain_cycle=0,memctrl_new.data_current_pos=0,memctrl_new.data_ok=0;
-
-	//clear icache
-	for(int i=0;i<MaxICache;i++)icache_new.valid[i]=0;
 
 	//clear ram
 	las_need_return=0;
@@ -756,6 +775,7 @@ void do_ROB(){
 			// update register
 			commit_rd=ROB_las.s[b3].dest;
 			reg_new[commit_rd].reg=ROB_las.s[b3].value;
+			// printf("!!!! JAL commit_rd=%x,reg_new=%x\n",commit_rd,reg_new[commit_rd].reg);
 			if(reg_las[commit_rd].busy&&reg_las[commit_rd].reorder==b3)reg_new[commit_rd].busy=0;
 			// update RS
 			for(int j=0;j<MaxRS;j++){
@@ -786,6 +806,10 @@ void do_ROB(){
 				if(ROB_las.s[b3].value)pc_new=ROB_las.s[b3].jumppc;
 				else pc_new=ROB_las.s[b3].pc+4;
 				Clear_flag=1;
+				if(debugflag){
+					cout<<"clock="<<Clock*2+51<<endl;
+					printf("ClearAll, ROB_pc=%x, ROB_value=%x\n",ROB_las.s[b3].pc,ROB_las.s[b3].value);
+				}
 				if(ROB_las.s[b3].ordertype==JALR){
 					
 					// update register
@@ -810,7 +834,7 @@ void do_ROB(){
 			else {//预测成功
 				predictSuccess++;
 				// update BHT
-				int x=ROB_las.s[b3].inst&0xfff;
+				unsigned int x=ROB_las.s[b3].inst&0xfff;
 				if(BHT_las[x].s[0]==0&&BHT_las[x].s[1]==0)BHT_new[x].s[0]=0,BHT_new[x].s[1]=0;
 				if(BHT_las[x].s[0]==0&&BHT_las[x].s[1]==1)BHT_new[x].s[0]=0,BHT_new[x].s[1]=0;
 				if(BHT_las[x].s[0]==1&&BHT_las[x].s[1]==0)BHT_new[x].s[0]=1,BHT_new[x].s[1]=1;
@@ -876,14 +900,6 @@ void update(){
 	Clear_flag=0;
 }
 void mem_ram(bool en_in,bool r_or_w,unsigned int addr,unsigned char data_in,unsigned char &data_ans){//与内存交互 (0:r,1:w)
-	// if(en_in){
-	// 	if(r_or_w==0){
-	// 		printf("load : get mem[%u] %u\n",addr,mem[addr]);
-	// 	}
-	// 	else {
-	// 		printf("store : mem[%u] = %u\n",addr,data_in);
-	// 	}
-	// }
 	if(las_need_return){
 		data_ans=lasans;
 	}
@@ -892,13 +908,28 @@ void mem_ram(bool en_in,bool r_or_w,unsigned int addr,unsigned char data_in,unsi
 		if(r_or_w==0){//read
 			las_need_return=1;
 			lasans=mem[addr];
+			// printf("!!!!!!!!!!!! load data[%x]=%x\n",addr,lasans);
 		}
 		else{//write
+			if(addr==0x30000){
+				cerr<<"Clock="<<Clock*2+51<<endl;
+				cerr<<data_in<<endl;
+				// cout<<"Clock="<<Clock*2+51<<endl;
+				// cout<<data_in<<endl;
+				// printf("!!!!!!!!!!!! store data[%x]=%x\n",addr,data_in);
+				
+				// cout<<"clock="<<Clock*2+51<<endl;
+				// for(int i=0;i<MaxReg;i++)printf("%x ",reg_las[i].reg);
+				// cout<<"  reg"<<endl;
+				// exit(0);
+			}
+			// printf("!!!!!!!!!!!! store data[%x]=%x\n",addr,data_in);
 			mem[addr]=data_in;
 		}
 	}
 }
 void do_memctrl(){
+	bool need;
 	bool flag1=!( (1<=memctrl_las.ins_remain_cycle&&memctrl_las.ins_remain_cycle<=3)||memctrl_las.ins_remain_cycle==5 )  
 			&&memctrl_las.data_remain_cycle;
 	
@@ -953,7 +984,7 @@ void do_memctrl(){
 			}
 
 			unsigned char data_in,data_ans;// data_in : meaningless
-			bool need=(1<=memctrl_las.data_remain_cycle&&memctrl_las.data_remain_cycle<=4);
+			need=(1<=memctrl_las.data_remain_cycle&&memctrl_las.data_remain_cycle<=4);
 			mem_ram(need,0,memctrl_las.data_addr,data_in,data_ans);
 
 			if(memctrl_las.data_current_pos==1){
@@ -1033,7 +1064,7 @@ void do_memctrl(){
 			// cout<<memctrl_las.data_addr<<" "<<(unsigned int)data_in<<" "<<memctrl_las.data_in<<endl;
 			
 
-			bool need=(1<=memctrl_las.data_remain_cycle&&memctrl_las.data_remain_cycle<=4);
+			need=(1<=memctrl_las.data_remain_cycle&&memctrl_las.data_remain_cycle<=4);
 			mem_ram(need,1,memctrl_las.data_addr,data_in,data_ans);
 		}
 	}
@@ -1073,7 +1104,7 @@ void do_memctrl(){
 		}
 
 		unsigned char ins_in,ins_ans;// ins_in : meaningless
-		bool need=(1<=memctrl_las.ins_remain_cycle&&memctrl_las.ins_remain_cycle<=4);
+		need=(1<=memctrl_las.ins_remain_cycle&&memctrl_las.ins_remain_cycle<=4);
 		mem_ram(need,0,memctrl_las.ins_addr,ins_in,ins_ans);
 
 		if(memctrl_las.ins_current_pos==1){
@@ -1089,7 +1120,6 @@ void do_memctrl(){
 			memctrl_new.ins_ans=(memctrl_las.ins_ans&0x00ffffff)|((unsigned int)ins_ans<<24);//[31:24]
 		}
 
-		// if(memctrl_new.ins_ok==1)printf("%x\n",memctrl_new.ins_ans);
 	}
 }
 int main(){
@@ -1099,7 +1129,7 @@ int main(){
 	flag_END_new=flag_END_las=0;
 	while(1){
 		Clock++;
-		// cout<<"clock="<<Clock<<endl;
+		if(debugflag)cout<<"clock="<<Clock*2+51<<endl;
 		do_memctrl();
 		Get_ins_to_queue();
 		do_ROB();
@@ -1107,25 +1137,28 @@ int main(){
 		do_SLB();
 		do_ins_queue();
 		//Get_ins_to_queue()要在do_ROB()前面，因为同时修改了pc_new，但do_ROB()优先级更高(do_ROB()中的remake)
-		//do_ROB()要在do_ins_queue()前面，因为同时修改了reg_new，但do_ins_queue()优先级更高,且do_ins_queue()中调用了ROB_new
+		//do_ROB()要在do_ins_queue()前面，因为同时修改了reg_new，但do_ins_queue()优先级更高
 		if(Clear_flag)ClearAll();
-		update();
-		// if(OKnum==7000){
-			// cout<<"Ins_queue.size="<<Ins_queue_las.size<<endl;
-			// cout<<"SLB.size="<<SLB_las.size<<endl;
-			// cout<<"ROB.size="<<ROB_las.size<<endl;
-			// cout<<"ROB.L="<<ROB_las.L<<endl;
-			// cout<<"ROB.L type="<<GGG[ROB_las.s[ROB_las.L].ordertype]<<endl;
-			// cout<<OKnum<<endl;
-			// cout<<Clock<<endl;
-			// for(int i=0;i<MaxReg;i++)cout<<reg_las[i].reg<<" ";
-			// cout<<endl;
+		// if(Clock*2+51>=17100&&Clock*2+51<=18000){
+		// 	cout<<"clock="<<Clock*2+51<<endl;
+		// 	// cout<<"Ins_queue.size="<<Ins_queue_las.size<<endl;
+		// 	// cout<<"SLB.size="<<SLB_las.size<<endl;
+		// 	printf("ROB.size= %x\n",ROB_las.size);
+		// 	printf("ROB.L= %x\n",ROB_las.L);
+		// 	printf("ROB.R= %x\n",ROB_las.R);
+		// 	cout<<"ROB.L type="<<GGG[ROB_las.s[ROB_las.L].ordertype]<<endl;
+		// 	// cout<<OKnum<<endl;
+		// 	// cout<<Clock<<endl;
+		// 	// for(int i=0;i<MaxReg;i++)cout<<reg_las[i].reg<<" ";
+		// 	// cout<<endl;
 		// }
+		update();
 		if(flag_END_las&&Ins_queue_las.size==0&&ROB_las.size==0)break;
-		// if(Clock==1000)exit(0);
+		// if(Clock*2+51>=4495000)exit(0);
 	}
 	printf("%u\n",reg_las[10].reg&255u);
 	// printf("Clock=%d\n",Clock);
+	cout<<"clock="<<Clock*2+51<<endl;
 	// printf("predict success: %d/%d=%lf\n",predictSuccess,predictTot,predictSuccess*1.0/predictTot);
 	return 0;
 }
